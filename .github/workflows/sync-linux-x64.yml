@@ -79,19 +79,9 @@ jobs:
       - name: Create GitHub Release
         if: steps.check.outputs.exists == 'false'
         run: |
-          VERSION=${{ steps.version.outputs.version }}
-          TAG=${{ steps.version.outputs.tag }}
-          CHECKSUM=${{ steps.checksum.outputs.expected }}
-
-          gh release create "$TAG" \
-            claude-$VERSION-linux-x64.tar.gz \
-            --title "Claude $VERSION (linux-x64)" \
-            --notes "Automated mirror of linux-x64 build
-
-SHA256:
-\`\`\`
-$CHECKSUM
-\`\`\`
-"
+          gh release create "${{ steps.version.outputs.tag }}" \
+            claude-${{ steps.version.outputs.version }}-linux-x64.tar.gz \
+            --title "Claude ${{ steps.version.outputs.version }} (linux-x64)" \
+            --notes-file release-notes.txt
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
