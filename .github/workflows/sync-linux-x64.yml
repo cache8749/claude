@@ -1,0 +1,97 @@
+name: Sync Claude Linux x64 Release
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Fetch latest version
+        id: version
+        run: |
+          VERSION=$(curl -s https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases/latest)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag=v$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Check if release already exists
+        id: check
+        run: |
+          if gh release view "${{ steps.version.outputs.tag }}" >/dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Stop if release exists
+        if: steps.check.outputs.exists == 'true'
+        run: echo "Release already exists. Skipping."
+
+      - name: Download manifest
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          curl -s -o manifest.json \
+            https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases/$VERSION/manifest.json
+
+      - name: Extract expected checksum
+        if: steps.check.outputs.exists == 'false'
+        id: checksum
+        run: |
+          EXPECTED=$(jq -r '.platforms["linux-x64"].checksum' manifest.json)
+          echo "expected=$EXPECTED" >> $GITHUB_OUTPUT
+
+      - name: Download linux-x64 binary
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          curl -L -o claude \
+            https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases/$VERSION/linux-x64/claude
+          chmod +x claude
+
+      - name: Verify SHA256 checksum
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          ACTUAL=$(sha256sum claude | cut -d' ' -f1)
+          echo "Actual checksum: $ACTUAL"
+          echo "Expected checksum: ${{ steps.checksum.outputs.expected }}"
+          if [ "$ACTUAL" != "${{ steps.checksum.outputs.expected }}" ]; then
+            echo "Checksum verification failed!"
+            exit 1
+          fi
+
+      - name: Archive binary
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          tar -czf claude-$VERSION-linux-x64.tar.gz claude
+
+      - name: Create GitHub Release
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          TAG=${{ steps.version.outputs.tag }}
+          CHECKSUM=${{ steps.checksum.outputs.expected }}
+
+          gh release create "$TAG" \
+            claude-$VERSION-linux-x64.tar.gz \
+            --title "Claude $VERSION (linux-x64)" \
+            --notes "Automated mirror of linux-x64 build
+
+SHA256:
+\`\`\`
+$CHECKSUM
+\`\`\`
+"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
