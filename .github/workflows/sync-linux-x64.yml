@@ -81,7 +81,6 @@ jobs:
         run: |
           gh release create "${{ steps.version.outputs.tag }}" \
             claude-${{ steps.version.outputs.version }}-linux-x64.tar.gz \
-            --title "Claude ${{ steps.version.outputs.version }} (linux-x64)" \
-            --notes-file release-notes.txt
+            --title "Claude ${{ steps.version.outputs.version }} (linux-x64)"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
